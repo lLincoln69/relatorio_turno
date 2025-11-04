@@ -49,55 +49,74 @@ with col1:
 with col2:
     salvar = st.button("💾 Salvar relatório")
 
+from pydrive2.auth import GoogleAuth
+from pydrive2.drive import GoogleDrive
+
+# --- CONFIGURAR AUTENTICAÇÃO ---
+def autenticar_drive():
+    gauth = GoogleAuth()
+    gauth.LoadCredentialsFile("credentials.json")
+    if not gauth.credentials:
+        gauth.LocalWebserverAuth()
+    elif gauth.access_token_expired:
+        gauth.Refresh()
+    else:
+        gauth.Authorize()
+    gauth.SaveCredentialsFile("credentials.json")
+    return GoogleDrive(gauth)
+
+# ID da pasta principal no Drive (coloque o seu!)
+PASTA_PRINCIPAL_ID = "HUbHxjkRu0006qjtWk1vTvRpF2-CUXL6"
+
+# --- SALVAR NO GOOGLE DRIVE ---
 if salvar:
     if not operador or not maquina:
         st.error("❗ Preencha os campos obrigatórios antes de salvar.")
     else:
-        # Criar pasta principal para salvar relatório
+        drive = autenticar_drive()
+
         data_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        pasta = f"relatorios/{data_str}_{turno}"
-        os.makedirs(pasta, exist_ok=True)
+        pasta_nome = f"{data_str}_{turno}"
 
-        # --- SALVAR FOTOS INDIVIDUAIS ---
-        if foto_floop:
-            with open(os.path.join(pasta, "floop.jpg"), "wb") as f:
-                f.write(foto_floop.getbuffer())
-
-        if foto_formacao:
-            with open(os.path.join(pasta, "formacao.jpg"), "wb") as f:
-                f.write(foto_formacao.getbuffer())
-
-        if foto_serra:
-            with open(os.path.join(pasta, "serra.jpg"), "wb") as f:
-                f.write(foto_serra.getbuffer())
-
-        if foto_bisel:
-            with open(os.path.join(pasta, "bisel.jpg"), "wb") as f:
-                f.write(foto_bisel.getbuffer())
-
-        if foto_enfardadeira:
-            with open(os.path.join(pasta, "enfardadeira.jpg"), "wb") as f:
-                f.write(foto_enfardadeira.getbuffer())
-
-        # --- SALVAR DADOS EM CSV ---
-        data_br = data.strftime("%d/%m/%Y")
-        dados = {
-            "Data": [data_br],
-            "Turno": [turno],
-            "Operador": [operador],
-            "Máquina": [maquina],
-            "Status da Máquina": [status],
+        # Criar pasta do relatório no Drive
+        pasta_metadata = {
+            'title': pasta_nome,
+            'parents': [{'id': PASTA_PRINCIPAL_ID}],
+            'mimeType': 'application/vnd.google-apps.folder'
         }
+        pasta_drive = drive.CreateFile(pasta_metadata)
+        pasta_drive.Upload()
+        pasta_id = pasta_drive['id']
 
-        df = pd.DataFrame(dados)
-        df.to_csv(os.path.join(pasta, "relatorio.csv"), index=False, encoding="utf-8-sig")
+        # Salvar fotos no Drive
+        for etapa, lista_fotos in st.session_state.fotos.items():
+            for foto in lista_fotos:
+                arquivo = drive.CreateFile({
+                    'title': f"{etapa}_{foto.name}",
+                    'parents': [{'id': pasta_id}]
+                })
+                arquivo.SetContentFile(foto.name)
+                arquivo.Upload()
 
-        st.success("✅ Relatório salvo com sucesso!")
+        # Criar e enviar o CSV
+        data_formatada = data.strftime("%d/%m/%Y")
+        dados = pd.DataFrame([{
+            "Data": data_formatada,
+            "Turno": turno,
+            "Operador": operador,
+            "Máquina": maquina,
+            "Status": status
+        }])
+        dados.to_csv("relatorio.csv", index=False, encoding="utf-8-sig")
 
+        relatorio_drive = drive.CreateFile({
+            'title': 'relatorio.csv',
+            'parents': [{'id': pasta_id}]
+        })
+        relatorio_drive.SetContentFile("relatorio.csv")
+        relatorio_drive.Upload()
 
-        st.success("✅ Relatório salvo com sucesso!")
-        st.session_state.fotos = {k: [] for k in st.session_state.fotos}  # limpar após salvar
-       
+        st.success("✅ Relatório e fotos enviados para o Google Drive com sucesso!")
 
 
 
