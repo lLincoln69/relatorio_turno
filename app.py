@@ -1,10 +1,17 @@
-import streamlit as st
-from datetime import datetime
-import pandas as pd
-import os
 import json
 from pydrive2.auth import GoogleAuth
 from pydrive2.drive import GoogleDrive
+from oauth2client.service_account import ServiceAccountCredentials
+import streamlit as st
+
+# Lê as credenciais do Streamlit Secrets
+creds_dict = st.secrets["google"]
+creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict)
+
+# Autentica e cria o objeto de conexão
+gauth = GoogleAuth()
+gauth.credentials = creds
+drive = GoogleDrive(gauth)
 
 # ------------------------------------------------------------
 # CONFIGURAÇÕES GERAIS
